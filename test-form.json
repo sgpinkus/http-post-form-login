@@ -1,0 +1,6 @@
+{
+    "Login": "Login",
+    "username": "admin",
+    "$password": "./wordlist.txt",
+    "@user_token": "//input[@name='user_token']/@value"
+}
