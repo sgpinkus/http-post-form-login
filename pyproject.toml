@@ -1,0 +1,20 @@
+[project]
+name = "http-post-form-login"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "requests==2.32.5",
+  "lxml==6.0.2"
+]
+
+[project.scripts]
+http-post-form-login = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+python_files = ["test.py", "*_test.py"]

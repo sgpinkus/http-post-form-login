@@ -1,6 +1,6 @@
 {
-    "Login": "Login",
     "username": "admin",
-    "$password": "./wordlists/SecLists-master/Passwords/xato-net-10-million-passwords-100000.txt",
-    "@user_token": "//input[@name='user_token']/@value"
+    "$password": "./wordlist.txt",
+    "@csrf_token": "//input[@name='csrf_token']/@value",
+    "extra_field": "123"
 }

@@ -5,6 +5,7 @@ import json
 import logging
 import itertools
 import argparse
+from typing import Any, Iterator
 import requests
 from lxml import etree
 
@@ -13,22 +14,21 @@ logger = logging.getLogger('http-post-form-login')
 logger.setLevel(logging.INFO)
 
 
-def main(args=None):
+def main(_args: list[str] = []):
     ''' main '''
-    args = parse_args(args or sys.argv[1:])
+    args = parse_args(_args or sys.argv[1:])
     logger.setLevel(args.log_level)
     logger.debug(str(args))
     form = json.loads(args.form) if (args.form is not None) else json_load(args.form_file)
     logger.debug(str(form))
     session = requests.Session()
-    forms = parse_form_file_lookups(form)
-    for form in generate_combinations(forms):
-        logger.debug('TRYING %s', form)
+    for form in generate_parser_form_combinations(parse_form_file_lookups(form)):
+        # Refetch the target with every attempt and do  xpath queries on the fresh response.
+        logger.debug(f'FETCHING {args.url}')
         response = session.get(args.url, timeout=100)
         response.raise_for_status()
-        # print(response.text)
-        data = parse_form_xpath_lookups(form, response.text)
-        logger.debug('TRYING#2 %s', data)
+        data: dict[str, Any] = parse_form_xpath_lookups(form, response.text)
+        logger.debug(f'TRYING {data}')
         response = session.post(args.url, data=data, timeout=100)
         if not response.ok:
             logger.warning("POST HTTP ERROR: %s failed [status_code=%s]", args.url, response.status_code)
@@ -46,7 +46,8 @@ def main(args=None):
             else:
                 logger.debug("success-test=false: %s", json.dumps(data))
 
-def generate_combinations(obj):
+
+def generate_parser_form_combinations(obj: dict[str, Any]) -> Iterator[dict[str, Any]]:
     array_keys = {key: value for key, value in obj.items() if isinstance(value, list)}
     other_keys = {key: value for key, value in obj.items() if not isinstance(value, list)}
     array_combinations = itertools.product(*array_keys.values())
@@ -57,22 +58,24 @@ def generate_combinations(obj):
         yield updated_obj
 
 
-def parse_form_file_lookups(form):
-    _form = {}
-    for k,v in form.items():
+def parse_form_file_lookups(form: dict[str, Any]):
+    ''' Resolve xxx: @<filename> to xxx: <array-of-value-from-filename> for all matching keys in form. '''
+    _form: dict[str, Any] = {}
+    for k, v in form.items():
         if k[0] == '$':
             with open(v, 'r', encoding='utf8') as f:
-                words = [s.strip() for s in f.read().split('\n')]
+                words = f.read().strip().split('\n')
                 _form[k[1:]] = words
         else:
             _form[k] = v
     return _form
 
 
-def parse_form_xpath_lookups(form, response_text):
+def parse_form_xpath_lookups(form: dict[str, Any], response_text: str) -> dict[str, Any]:
+    ''' Resolve xxx: @<xpath> to xxx: value, for all matching keys in form. '''
     tree = etree.HTML(response_text)
-    _form = {}
-    for k,v in form.items():
+    _form: dict[str, Any] = {}
+    for k, v in form.items():
         if k[0] == '@':
             _form[k[1:]] = tree.xpath(v)[0]
         else:
@@ -80,10 +83,10 @@ def parse_form_xpath_lookups(form, response_text):
     return _form
 
 
-
 def json_load(filename: str):
     with open(filename, 'r', encoding='utf8') as f:
         return json.load(f)
+
 
 def parse_args(args: list[str]):
     ''' Parse args. '''
@@ -92,18 +95,21 @@ def parse_args(args: list[str]):
         description='Post login form.',
     )
     parser.add_argument('url', type=str,
-                    help='url')
+                        help='url')
     form = parser.add_mutually_exclusive_group(required=True)
-    form.add_argument('--form', type=str)
-    form.add_argument('--form-file', type=str)
+    form.add_argument('--form-file', type=str,
+                      help="JSON file containing form values to submit to [url]. May use $xxx and @xxx expansions.")
+    form.add_argument('--form', type=str,
+                      help="Same as form-file but as a literal JOSN string")
     test = parser.add_mutually_exclusive_group(required=True)
-    test.add_argument('--fail-test', type=str, help="Failure page regex")
-    test.add_argument('--success-test', type=str, help="Success page regex")
-    parser.add_argument('--headers',
-        action='store',
-        type=str,
-    )
-    parser.add_argument('--log-level', action='store', default='INFO', type=str, help='set log level')
+    test.add_argument('--fail-test', type=str,
+                      help="Failure page regex")
+    test.add_argument('--success-test', type=str,
+                      help="Success page regex")
+    parser.add_argument('--headers', type=str, action='store',
+                        help="Additional or override headers to submit")
+    parser.add_argument('--log-level', type=str, action='store', default='INFO',
+                        help='set log level')
     return parser.parse_args(args)
 
 
